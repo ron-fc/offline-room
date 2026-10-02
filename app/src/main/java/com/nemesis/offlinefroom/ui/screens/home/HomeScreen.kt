@@ -1,5 +1,6 @@
 package com.nemesis.offlinefroom.ui.screens.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,12 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.nemesis.offlinefroom.domain.model.Character
 import com.nemesis.offlinefroom.ui.components.CharacterCard
 
@@ -34,10 +36,12 @@ import com.nemesis.offlinefroom.ui.components.CharacterCard
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
+    onCharacterClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val lazyPagingItems = viewModel.charactersPagingFlow.collectAsLazyPagingItems()
+    val refreshState = lazyPagingItems.loadState.refresh
+    val isEmpty = lazyPagingItems.itemCount == 0
 
     Scaffold(
         modifier = modifier,
@@ -52,19 +56,19 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (val state = uiState) {
-                HomeUiState.Loading -> LoadingContent()
+            when {
+                isEmpty && refreshState is LoadState.Loading -> LoadingContent()
 
-                is HomeUiState.Error -> ErrorContent(
-                    message = state.message,
-                    onRetry = viewModel::refresh
+                isEmpty && refreshState is LoadState.Error -> ErrorContent(
+                    message = viewModel.toUserMessage(refreshState.error),
+                    onRetry = lazyPagingItems::refresh
                 )
 
-                is HomeUiState.Success -> CharacterListContent(
-                    characters = state.characters,
-                    isOffline = state.isOffline,
-                    isRefreshing = isRefreshing,
-                    onRefresh = viewModel::refresh
+                else -> CharacterListContent(
+                    lazyPagingItems = lazyPagingItems,
+                    isOffline = refreshState is LoadState.Error,
+                    isRefreshing = refreshState is LoadState.Loading,
+                    onCharacterClick = onCharacterClick
                 )
             }
         }
@@ -116,15 +120,17 @@ private fun ErrorContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CharacterListContent(
-    characters: List<Character>,
+    lazyPagingItems: LazyPagingItems<Character>,
     isOffline: Boolean,
     isRefreshing: Boolean,
-    onRefresh: () -> Unit,
+    onCharacterClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val appendState = lazyPagingItems.loadState.append
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
+        onRefresh = lazyPagingItems::refresh,
         modifier = modifier.fillMaxSize()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -137,7 +143,7 @@ private fun CharacterListContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (characters.isEmpty()) {
+                if (lazyPagingItems.itemCount == 0) {
                     item(key = "empty") {
                         Text(
                             text = "No hay personajes disponibles. Desliza hacia abajo para actualizar.",
@@ -151,13 +157,70 @@ private fun CharacterListContent(
                     }
                 } else {
                     items(
-                        items = characters,
-                        key = { character -> character.id }
-                    ) { character ->
-                        CharacterCard(character = character)
+                        count = lazyPagingItems.itemCount,
+                        key = lazyPagingItems.itemKey { character -> character.id }
+                    ) { index ->
+                        val character = lazyPagingItems[index]
+                        if (character != null) {
+                            Box(
+                                modifier = Modifier.clickable {
+                                    onCharacterClick(character.id)
+                                }
+                            ) {
+                                CharacterCard(character = character)
+                            }
+                        }
+                    }
+                }
+
+                if (appendState is LoadState.Loading) {
+                    item(key = "append_loading") {
+                        AppendLoadingItem()
+                    }
+                }
+
+                if (appendState is LoadState.Error) {
+                    item(key = "append_error") {
+                        AppendErrorItem(onRetry = lazyPagingItems::retry)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AppendLoadingItem(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun AppendErrorItem(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "No se pudieron cargar más personajes.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onRetry) {
+            Text(text = "Reintentar")
         }
     }
 }

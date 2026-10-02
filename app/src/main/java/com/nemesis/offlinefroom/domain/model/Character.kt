@@ -1,5 +1,3 @@
-#!/usr/bin/env kotlin
-
 package com.nemesis.offlinefroom.domain.model
 
 data class Character(
@@ -7,5 +5,8 @@ data class Character(
     val name: String,
     val status: String,
     val species: String,
-    val imageUrl: String
+    val imageUrl: String,
+    val gender: String = "",
+    val origin: String = "",
+    val lastKnownLocation: String = ""
 )

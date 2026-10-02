@@ -1,39 +1,46 @@
 package com.nemesis.offlinefroom.data.repository
 
+import androidx.paging.ExperimentalPagingApi
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.map
 import com.nemesis.offlinefroom.data.local.dao.CharacterDao
 import com.nemesis.offlinefroom.data.mapper.toDomain
-import com.nemesis.offlinefroom.data.mapper.toEntity
-import com.nemesis.offlinefroom.data.remote.api.RickAndMortyApi
+import com.nemesis.offlinefroom.data.paging.CharacterRemoteMediator
 import com.nemesis.offlinefroom.domain.model.Character
 import com.nemesis.offlinefroom.domain.repository.CharacterRepository
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 
 class CharacterRepositoryImpl(
     private val dao: CharacterDao,
-    private val api: RickAndMortyApi,
+    private val remoteMediator: CharacterRemoteMediator,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : CharacterRepository {
 
-    override fun getCharacters(): Flow<List<Character>> =
-        dao.getAllCharacters()
-            .map { entities -> entities.map { it.toDomain() } }
+    @OptIn(ExperimentalPagingApi::class)
+    override fun getPagingCharacters(): Flow<PagingData<Character>> =
+        Pager(
+            config = PagingConfig(
+                pageSize = PAGE_SIZE,
+                enablePlaceholders = false
+            ),
+            remoteMediator = remoteMediator,
+            pagingSourceFactory = { dao.getPagingCharacters() }
+        ).flow.map { pagingData ->
+            pagingData.map { entity -> entity.toDomain() }
+        }
+
+    override fun getCharacterById(id: Int): Flow<Character?> =
+        dao.getCharacterById(id)
+            .map { entity -> entity?.toDomain() }
             .flowOn(ioDispatcher)
 
-    override suspend fun refreshCharacters(): Result<Unit> = withContext(ioDispatcher) {
-        try {
-            val response = api.getCharacters()
-            dao.insertCharacters(response.results.map { it.toEntity() })
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    private companion object {
+        const val PAGE_SIZE = 20
     }
 }

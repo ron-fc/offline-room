@@ -9,7 +9,10 @@ fun CharacterDto.toEntity(): CharacterEntity = CharacterEntity(
     name = name,
     status = status,
     species = species,
-    imageUrl = image
+    imageUrl = image,
+    gender = gender,
+    origin = origin.name,
+    lastKnownLocation = location.name
 )
 
 fun CharacterEntity.toDomain(): Character = Character(
@@ -17,7 +20,10 @@ fun CharacterEntity.toDomain(): Character = Character(
     name = name,
     status = status,
     species = species,
-    imageUrl = imageUrl
+    imageUrl = imageUrl,
+    gender = gender,
+    origin = origin,
+    lastKnownLocation = lastKnownLocation
 )
 
 fun CharacterDto.toDomain(): Character = Character(
@@ -25,5 +31,8 @@ fun CharacterDto.toDomain(): Character = Character(
     name = name,
     status = status,
     species = species,
-    imageUrl = image
+    imageUrl = image,
+    gender = gender,
+    origin = origin.name,
+    lastKnownLocation = location.name
 )
